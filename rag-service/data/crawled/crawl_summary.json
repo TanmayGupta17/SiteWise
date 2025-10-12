@@ -1,0 +1,22 @@
+{
+  "crawl_timestamp": 1760308056.461476,
+  "pages_count": 15,
+  "urls": [
+    "https://docs.python.org/3/tutorial/",
+    "https://docs.python.org/3/genindex.html",
+    "https://docs.python.org/3/py-modindex.html",
+    "https://docs.python.org/3/tutorial/appetite.html",
+    "https://docs.python.org/3/whatsnew/changelog.html",
+    "https://docs.python.org/3/index.html",
+    "https://docs.python.org/3/library/index.html",
+    "https://docs.python.org/3/reference/index.html",
+    "https://docs.python.org/3/extending/index.html",
+    "https://docs.python.org/3/c-api/index.html",
+    "https://docs.python.org/3/glossary.html",
+    "https://docs.python.org/3/tutorial/interpreter.html",
+    "https://docs.python.org/3/tutorial/introduction.html",
+    "https://docs.python.org/3/tutorial/controlflow.html",
+    "https://docs.python.org/3/tutorial/datastructures.html"
+  ],
+  "errors": []
+}
