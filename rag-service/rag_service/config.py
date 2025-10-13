@@ -32,7 +32,7 @@ DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # Fast, good quality model
 
 # Search settings - how we find relevant content
 DEFAULT_TOP_K = 5              # How many chunks to retrieve per question
-SIMILARITY_THRESHOLD = 0.7     # Minimum similarity score to consider relevant
+SIMILARITY_THRESHOLD = 0.3     # Minimum similarity score to consider relevant
 
 # API settings
 API_HOST = os.getenv("API_HOST", "127.0.0.1")
@@ -45,3 +45,5 @@ REFUSAL_PHRASES = [
     "The crawled content doesn't contain",
     "Not found in crawled content"
 ]
+
+GOOGLE_API_KEY=os.getenv("GOOGLE_API_KEY", "")

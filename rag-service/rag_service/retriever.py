@@ -6,12 +6,19 @@ import time
 import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
-
+import google.generativeai as genai
+import os
 from .config import (
     DEFAULT_TOP_K, SIMILARITY_THRESHOLD, MAX_ANSWER_LENGTH, REFUSAL_PHRASES
 )
 from .indexer import TextIndexer, DocumentChunk
 from .utils import logger
+
+# Configure Gemini globally once (top of file)
+genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+# for model in genai.list_models():
+#     if "generateContent" in model.supported_generation_methods:
+#         print(model.name)
 
 @dataclass
 class SourceInfo:
@@ -80,24 +87,30 @@ class GroundedQA:
                 question_embedding.astype(np.float32), 
                 k
             )
-            
+            print(similarities,indices, "hi")
             # Filter results by similarity threshold
             relevant_chunks = []
             similarity_scores = []
             
+            print(self.indexer.document_chunks[151].content,self.indexer.document_chunks[92].content,"tanmay")
+            print(self.indexer.document_chunks[:20])
+
             for similarity, idx in zip(similarities[0], indices[0]):
                 if idx >= 0 and similarity >= SIMILARITY_THRESHOLD:
+                    print("nigga")
                     chunk = self.indexer.document_chunks[idx]
                     relevant_chunks.append(chunk)
                     similarity_scores.append(float(similarity))
             
             retrieval_time = (time.time() - start_time) * 1000
             
+            
             logger.info("Retrieved chunks", 
                        question_length=len(question),
                        chunks_found=len(relevant_chunks),
                        top_similarity=max(similarity_scores) if similarity_scores else 0,
                        retrieval_time_ms=retrieval_time)
+            print(relevant_chunks,similarity_scores,retrieval_time,"hello")
             
             return relevant_chunks, similarity_scores, retrieval_time
             
@@ -135,67 +148,118 @@ class GroundedQA:
         
         return "".join(context_parts)
     
+    # def _generate_answer(self, question: str, context: str) -> Tuple[str, float]:
+    #     """
+    #     Generate an answer from the context.
+        
+    #     NOTE: This is currently a simple rule-based system.
+    #     In production, replace this with a local LLM like:
+    #     - Ollama (llama2, mistral, etc.)
+    #     - GPT4All
+    #     - Any local model via Hugging Face transformers
+    #     """
+    #     start_time = time.time()
+        
+    #     if not context.strip():
+    #         answer = self.answer_templates['not_found']
+    #         generation_time = (time.time() - start_time) * 1000
+    #         return answer, generation_time
+        
+    #     # Simple rule-based answer generation
+    #     question_lower = question.lower()
+        
+    #     # Extract relevant sentences from context
+    #     sentences = []
+    #     for line in context.split('\n'):
+    #         if line.startswith('Content:'):
+    #             content = line[8:].strip()  # Remove 'Content:' prefix
+    #             sentences.extend([s.strip() for s in content.split('.') if s.strip()])
+        
+    #     # Select most relevant sentences based on question type
+    #     if any(word in question_lower for word in ['what is', 'what are', 'define']):
+    #         # Definition questions - take first few sentences
+    #         relevant_sentences = sentences[:3]
+    #     elif any(word in question_lower for word in ['how', 'why', 'when', 'where']):
+    #         # Explanation questions - take more context
+    #         relevant_sentences = sentences[:4]
+    #     else:
+    #         # General questions
+    #         relevant_sentences = sentences[:3]
+        
+    #     if not relevant_sentences:
+    #         answer = self.answer_templates['insufficient']
+    #     else:
+    #         # Combine sentences into an answer
+    #         answer_text = '. '.join(relevant_sentences)
+    #         if answer_text and not answer_text.endswith('.'):
+    #             answer_text += '.'
+            
+    #         # Ensure answer isn't too long
+    #         if len(answer_text) > MAX_ANSWER_LENGTH:
+    #             answer_text = answer_text[:MAX_ANSWER_LENGTH-3] + "..."
+            
+    #         # Add context attribution
+    #         answer = f"Based on the crawled content: {answer_text}"
+        
+    #     generation_time = (time.time() - start_time) * 1000
+        
+    #     logger.info("Generated answer", 
+    #                answer_length=len(answer),
+    #                generation_time_ms=generation_time)
+        
+    #     return answer, generation_time
+
     def _generate_answer(self, question: str, context: str) -> Tuple[str, float]:
         """
-        Generate an answer from the context.
-        
-        NOTE: This is currently a simple rule-based system.
-        In production, replace this with a local LLM like:
-        - Ollama (llama2, mistral, etc.)
-        - GPT4All
-        - Any local model via Hugging Face transformers
+        Generate an answer using Google's Gemini API, based on the provided question and context.
         """
         start_time = time.time()
-        
+
+        # If context is empty, return fallback response
         if not context.strip():
             answer = self.answer_templates['not_found']
             generation_time = (time.time() - start_time) * 1000
             return answer, generation_time
+
+        try:
+            # Prepare the prompt for Gemini
+            prompt = f"""
+        You are a helpful assistant that answers strictly based on the provided context.
+        If the context does not have enough information to answer the question, respond with:
+        "I don't have enough information in the crawled content to answer this question."
+
+        Context:
+        {context}
+
+        Question: {question}
+
+        Answer:
+        """
+
+            # Initialize model (you can use gemini-1.5-pro for higher quality)
+            model = genai.GenerativeModel("gemini-2.5-flash-lite")
+
+            # Generate answer
+            response = model.generate_content(prompt)
+
+            # Extract text safely
+            answer = response.text.strip() if response and response.text else self.answer_templates["insufficient"]
+
+            # Handle overly long answers
+            if len(answer) > MAX_ANSWER_LENGTH:
+                answer = answer[:MAX_ANSWER_LENGTH - 3] + "..."
+
+            generation_time = (time.time() - start_time) * 1000
+
+            print(f"[INFO] Generated answer with Gemini (time={generation_time:.2f}ms)")
+            return answer, generation_time
+
+        except Exception as e:
+            print(f"[ERROR] Gemini generation failed: {e}")
+            answer = self.answer_templates["insufficient"]
+            generation_time = (time.time() - start_time) * 1000
+            return answer, generation_time
         
-        # Simple rule-based answer generation
-        question_lower = question.lower()
-        
-        # Extract relevant sentences from context
-        sentences = []
-        for line in context.split('\n'):
-            if line.startswith('Content:'):
-                content = line[8:].strip()  # Remove 'Content:' prefix
-                sentences.extend([s.strip() for s in content.split('.') if s.strip()])
-        
-        # Select most relevant sentences based on question type
-        if any(word in question_lower for word in ['what is', 'what are', 'define']):
-            # Definition questions - take first few sentences
-            relevant_sentences = sentences[:3]
-        elif any(word in question_lower for word in ['how', 'why', 'when', 'where']):
-            # Explanation questions - take more context
-            relevant_sentences = sentences[:4]
-        else:
-            # General questions
-            relevant_sentences = sentences[:3]
-        
-        if not relevant_sentences:
-            answer = self.answer_templates['insufficient']
-        else:
-            # Combine sentences into an answer
-            answer_text = '. '.join(relevant_sentences)
-            if answer_text and not answer_text.endswith('.'):
-                answer_text += '.'
-            
-            # Ensure answer isn't too long
-            if len(answer_text) > MAX_ANSWER_LENGTH:
-                answer_text = answer_text[:MAX_ANSWER_LENGTH-3] + "..."
-            
-            # Add context attribution
-            answer = f"Based on the crawled content: {answer_text}"
-        
-        generation_time = (time.time() - start_time) * 1000
-        
-        logger.info("Generated answer", 
-                   answer_length=len(answer),
-                   generation_time_ms=generation_time)
-        
-        return answer, generation_time
-    
     def _check_safety(self, question: str, context: str) -> bool:
         """
         Check for potential prompt injection or unsafe content.
@@ -240,6 +304,8 @@ class GroundedQA:
         try:
             # Step 1: Retrieve relevant chunks
             chunks, similarities, retrieval_time = self._retrieve_chunks(question, top_k)
+            logger.info("Chunks retrieved", count=len(chunks))
+            logger.info("Similarities", scores=similarities)
             
             # Step 2: Build context from chunks
             context = self._build_context(chunks)

@@ -1,0 +1,10 @@
+# Ignore all virtual environments anywhere
+**/venv/
+**/env/
+
+# Keep empty folders in specific paths by ignoring everything inside them but not the folder itself
+rag-service/data/crawled/*
+!rag-service/data/crawled/.gitkeep
+
+rag-service/data/vectors/*
+!rag-service/data/vectors/.gitkeep
