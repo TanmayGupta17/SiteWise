@@ -1,8 +1,17 @@
 {
-  "crawl_timestamp": 1760390629.9795341,
-  "pages_count": 0,
-  "urls": [],
-  "errors": [
-    "Error fetching https://docs.python.org/3/tutorial/https://docs.python.org/3/tutorial/: 404 Client Error: Not Found for url: https://docs.python.org/3/tutorial/https://docs.python.org/3/tutorial/"
-  ]
+  "crawl_timestamp": 1766063738.5139048,
+  "pages_count": 10,
+  "urls": [
+    "https://nodejs.org/docs/latest/api/",
+    "https://nodejs.org/",
+    "https://nodejs.org/docs/latest/api/documentation.html",
+    "https://nodejs.org/docs/latest/api/synopsis.html",
+    "https://nodejs.org/docs/latest/api/assert.html",
+    "https://nodejs.org/docs/latest/api/async_context.html",
+    "https://nodejs.org/docs/latest/api/async_hooks.html",
+    "https://nodejs.org/docs/latest/api/buffer.html",
+    "https://nodejs.org/docs/latest/api/addons.html",
+    "https://nodejs.org/docs/latest/api/n-api.html"
+  ],
+  "errors": []
 }

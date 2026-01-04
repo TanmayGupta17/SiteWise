@@ -1,24 +1,21 @@
-"""
-FastAPI web service for the RAG system.
-This provides HTTP endpoints so other applications can use our service.
-"""
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import time
+from pathlib import Path
+import io
 
-# Import our custom modules
 from rag_service.crawler import WebCrawler
 from rag_service.indexer import TextIndexer
 from rag_service.retriever import GroundedQA
 from rag_service.config import (
     DEFAULT_CRAWL_DELAY_MS, DEFAULT_MAX_PAGES, DEFAULT_MAX_DEPTH,
     DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP, DEFAULT_EMBEDDING_MODEL,
-    DEFAULT_TOP_K, API_HOST, API_PORT
+    DEFAULT_TOP_K, API_HOST, API_PORT, CRAWLED_DIR
 )
-from rag_service.utils import logger
+from rag_service.utils import logger, save_json
+import pdfplumber
 
-# Create FastAPI app with metadata
 app = FastAPI(
     title="RAG Service API",
     description="Retrieval-Augmented Generation service for web content",
@@ -27,9 +24,10 @@ app = FastAPI(
     redoc_url="/redoc"  # ReDoc will be at /redoc
 )
 
-# Global variables to hold our system components
 indexer = None
 qa_system = None
+
+ALLOWED_UPLOAD_EXTENSIONS = {".txt", ".md", ".json", ".pdf"}
 
 # Define request/response models using Pydantic
 # This ensures type safety and automatic API documentation
@@ -39,6 +37,7 @@ class CrawlRequest(BaseModel):
     max_pages: int = Field(DEFAULT_MAX_PAGES, description="Maximum number of pages to crawl")
     max_depth: int = Field(DEFAULT_MAX_DEPTH, description="Maximum crawl depth")
     crawl_delay_ms: int = Field(DEFAULT_CRAWL_DELAY_MS, description="Delay between requests in milliseconds")
+    respect_robots_txt: bool = Field(True, description="Whether to respect robots.txt")
 
 class CrawlResponse(BaseModel):
     page_count: int
@@ -75,6 +74,14 @@ class AskResponse(BaseModel):
     timings: TimingInfo
     is_refusal: bool = False
 
+class UploadResponse(BaseModel):
+    filename: str
+    stored_as: str
+    url: str
+    title: str
+    content_length: int
+    message: str
+
 # API Endpoints
 
 @app.get("/")
@@ -88,6 +95,7 @@ async def root():
             "crawl": "POST /crawl",
             "index": "POST /index", 
             "ask": "POST /ask",
+            "upload": "POST /upload",
             "status": "GET /status"
         }
     }
@@ -129,7 +137,8 @@ async def crawl_website(request: CrawlRequest):
         crawler = WebCrawler(
             crawl_delay_ms=request.crawl_delay_ms,
             max_pages=request.max_pages,
-            max_depth=request.max_depth
+            max_depth=request.max_depth,
+            respect_robots_txt=request.respect_robots_txt
         )
         
         # Do the actual crawling
@@ -236,12 +245,78 @@ async def ask_question(request: AskRequest):
         logger.error("QA error", error=str(e))
         raise HTTPException(status_code=500, detail=f"Question answering failed: {str(e)}")
 
+
+@app.post("/upload", response_model=UploadResponse)
+async def upload_document(
+    file: UploadFile = File(..., description="Text-based file to ingest (.txt, .md, .json)"),
+    title: Optional[str] = Form(None, description="Optional title to store with the document"),
+    source_url: Optional[str] = Form(None, description="Optional source URL for attribution")
+):
+    """
+    Upload a text document and store it in the crawled data directory so it can be indexed.
+    """
+    filename = file.filename or "uploaded.txt"
+    ext = Path(filename).suffix.lower()
+
+    if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}."
+        )
+
+    try:
+        raw_bytes = await file.read()
+    except Exception as e:
+        logger.error("File read failed", error=str(e))
+        raise HTTPException(status_code=400, detail="Could not read uploaded file.")
+
+    try:
+        if ext == ".pdf":
+            with pdfplumber.open(io.BytesIO(raw_bytes)) as pdf:
+                pages = [page.extract_text() or "" for page in pdf.pages]
+            text_content = "\n\n".join(pages).strip()
+        else:
+            text_content = raw_bytes.decode("utf-8", errors="ignore").strip()
+    except Exception as e:
+        logger.error("File parse failed", error=str(e))
+        raise HTTPException(status_code=400, detail="Could not parse uploaded file.")
+
+    if not text_content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty or could not extract text.")
+
+    stored_name = f"upload_{int(time.time())}_{Path(filename).stem}.json"
+    stored_path = CRAWLED_DIR / stored_name
+
+    document_record = {
+        "url": source_url or f"uploaded://{filename}",
+        "title": title or Path(filename).stem,
+        "content": text_content,
+        "timestamp": time.time(),
+        "content_length": len(text_content)
+    }
+
+    try:
+        save_json(document_record, stored_path)
+        logger.info("Uploaded document stored", stored_as=str(stored_path), bytes=len(raw_bytes))
+    except Exception as e:
+        logger.error("Failed to persist uploaded document", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to store uploaded document.")
+
+    return UploadResponse(
+        filename=filename,
+        stored_as=stored_name,
+        url=document_record["url"],
+        title=document_record["title"],
+        content_length=document_record["content_length"],
+        message="Document uploaded. Run /index to (re)build the vector store."
+    )
+
 # Add CORS middleware for development (allows web browsers to access our API)
 from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # In production, specify exact origins
+    allow_origins=["http://localhost:3000"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

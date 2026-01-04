@@ -87,20 +87,21 @@ class GroundedQA:
                 question_embedding.astype(np.float32), 
                 k
             )
-            print(similarities,indices, "hi")
+            # print(similarities,indices, "hi")
             # Filter results by similarity threshold
             relevant_chunks = []
             similarity_scores = []
             
-            print(self.indexer.document_chunks[151].content,self.indexer.document_chunks[92].content,"tanmay")
-            print(self.indexer.document_chunks[:20])
-
+            print(f"[DEBUG] Found {len(similarities[0])} results from FAISS")
             for similarity, idx in zip(similarities[0], indices[0]):
+                print(f"[DEBUG] Chunk {idx}: similarity={similarity:.4f}, threshold={SIMILARITY_THRESHOLD}")
                 if idx >= 0 and similarity >= SIMILARITY_THRESHOLD:
-                    print("nigga")
                     chunk = self.indexer.document_chunks[idx]
                     relevant_chunks.append(chunk)
                     similarity_scores.append(float(similarity))
+                    print(f"[DEBUG] ✓ Accepted chunk {idx} with score {similarity:.4f}")
+                else:
+                    print(f"[DEBUG] ✗ Rejected chunk {idx} (too low or invalid)")
             
             retrieval_time = (time.time() - start_time) * 1000
             

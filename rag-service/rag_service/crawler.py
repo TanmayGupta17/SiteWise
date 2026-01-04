@@ -75,10 +75,12 @@ class WebCrawler:
     def __init__(self, 
                  crawl_delay_ms: int = DEFAULT_CRAWL_DELAY_MS,
                  max_pages: int = DEFAULT_MAX_PAGES,
-                 max_depth: int = DEFAULT_MAX_DEPTH):
+                 max_depth: int = DEFAULT_MAX_DEPTH,
+                 respect_robots_txt: bool = True):
         self.crawl_delay_ms = crawl_delay_ms
         self.max_pages = max_pages
         self.max_depth = max_depth
+        self.respect_robots_txt = respect_robots_txt
         
         # Set up HTTP session with proper headers
         self.session = requests.Session()
@@ -151,8 +153,8 @@ class WebCrawler:
     def _fetch_page(self, url: str) -> Optional[PageContent]:
         """Download and parse a single page."""
         try:
-            # Check if robots.txt allows this
-            if not self.robot_checker.can_fetch(url):
+            # Check if robots.txt allows this (if enabled)
+            if self.respect_robots_txt and not self.robot_checker.can_fetch(url):
                 self.errors.append(f"Blocked by robots.txt: {url}")
                 return None
             

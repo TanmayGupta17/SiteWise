@@ -10,8 +10,35 @@ export default function Home() {
   const [answer, setAnswer] = useState('')
   const [sources, setSources] = useState([])
   const [loading, setLoading] = useState(false)
+  const [uploadFile, setUploadFile] = useState(null)
+  const [uploadTitle, setUploadTitle] = useState('')
+  const [uploadSource, setUploadSource] = useState('')
 
   const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
+  const handleUpload = async () => {
+    if (!uploadFile) return
+    const formData = new FormData()
+    formData.append('file', uploadFile)
+    if (uploadTitle) formData.append('title', uploadTitle)
+    if (uploadSource) formData.append('source_url', uploadSource)
+
+    setLoading(true)
+    setStatus('📤 Uploading document...')
+    setStep(1)
+
+    try {
+      const res = await axios.post(`${API}/upload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      setStatus(`✅ Uploaded: ${res.data.title || res.data.filename}`)
+      setStep(2)
+      setTimeout(handleIndex, 800)
+    } catch (err) {
+      setStatus(`❌ Upload error: ${err.message}`)
+      setLoading(false)
+    }
+  }
 
   const handleCrawl = async () => {
     if (!crawlUrl) return
@@ -23,7 +50,8 @@ export default function Home() {
         start_url: crawlUrl,
         max_pages: 10,
         max_depth: 2,
-        crawl_delay_ms: 1000
+        crawl_delay_ms: 1000,
+        respect_robots_txt: false  // Bypass robots.txt for educational use
       })
       setStatus(`✅ Crawled ${res.data.page_count} pages`)
       setStep(2)
@@ -74,6 +102,41 @@ export default function Home() {
     <div style={{ maxWidth: 800, margin: '0 auto', padding: 20 }}>
       <h1>🤖 RAG Service</h1>
       <p>Simple Next.js frontend for crawling and Q&A</p>
+
+      {/* Upload a local document */}
+      <section style={{ marginTop: 30, padding: 20, border: '1px solid #ddd', borderRadius: 8 }}>
+        <h2>Upload Document</h2>
+        <p style={{ marginBottom: 10 }}>Accepts .txt, .md, .json, .pdf. Uploaded files get indexed like crawled pages.</p>
+        <input
+          type="file"
+          accept=".txt,.md,.json,.pdf"
+          onChange={e => setUploadFile(e.target.files?.[0] || null)}
+          disabled={loading}
+          style={{ marginBottom: 10 }}
+        />
+        <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+          <input
+            type="text"
+            placeholder="Optional title"
+            value={uploadTitle}
+            onChange={e => setUploadTitle(e.target.value)}
+            disabled={loading}
+            style={{ flex: 1, padding: 8 }}
+          />
+          <input
+            type="url"
+            placeholder="Optional source URL"
+            value={uploadSource}
+            onChange={e => setUploadSource(e.target.value)}
+            disabled={loading}
+            style={{ flex: 1, padding: 8 }}
+          />
+        </div>
+        <button onClick={handleUpload} disabled={loading || !uploadFile} style={{ padding: '10px 20px' }}>
+          {loading && step === 1 ? 'Uploading...' : 'Upload & Index'}
+        </button>
+        {status && <p style={{ marginTop: 10 }}>{status}</p>}
+      </section>
 
       {/* Step 1: Crawl */}
       <section style={{ marginTop: 30, padding: 20, border: '1px solid #ddd', borderRadius: 8 }}>

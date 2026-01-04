@@ -3,6 +3,6 @@
   "chunk_size": 800,
   "chunk_overlap": 100,
   "embedding_dim": 384,
-  "total_chunks": 3032,
-  "timestamp": 1760390689.0940568
+  "total_chunks": 3802,
+  "timestamp": 1767537302.8502476
 }
